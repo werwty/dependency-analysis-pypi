@@ -1,4 +1,4 @@
-## Meta Reproducibility Analysis of Network Security Papers and the Software they Write
+## Meta Reproducibility Analysis of Network Security Papers and Tools
 
 The reliability of research, and therefore reproducibility, is the backbone of cumulative knowledge.
 Open data, clear methodology, and software tooling each play their part in making research reproducible.
