@@ -31,5 +31,6 @@ The packages near the root of this tree should also be made known to the communi
 Researchers and other developers can also utilize it to concentrate their resources on the most influential packages, ensuring that those will not be compromised.
 
 Open questions:
-    - What are some other intersting metrics we should include. 
-    - What other conclusions can we draw from this dependency graph?
+
+- What are some other interesting metrics we should include. 
+- What other conclusions can we draw from this dependency graph?
