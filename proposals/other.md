@@ -2,7 +2,7 @@
 
 ### Measuring the security risk of using unencrypted Wifi hotspots.
 
-Eavesdropping and MITM on an open Wifi network are less attractive than they were 10 years ago. Today, the standardized beamforming technique that comes with 802.11ac makes sniffing the traffic between beamforming-enabled devices harder (the sniffer must be placed at the right location). Modern websites and applications also tend to less vulnerable to eavesdropping and MITM because of the adoption of TLS.
+Eavesdropping and MITM on an open Wifi network are less attractive than they were 10 years ago. Today, the standardized beamforming technique that comes with 802.11ac makes sniffing the traffic between beamforming-enabled devices harder (the sniffer must be placed at the right location). Modern websites and applications also tend to be less vulnerable to eavesdropping and MITM because of the adoption of TLS.
 
 However, the traffic of legacy 802.11a/b/g/n clients that don't support beamforming is still easy to catch. Even though most application use TLS, there are some that do not implement TLS correctly. There is also the risk of side channel attacks on DNS traffic and others that can expose the user's privacy.
 
@@ -28,3 +28,5 @@ We can find the crypto libraries that have post-quantum support and then scan gi
 We'll either find: 1. there is close to zero adoption (most likely) or 2. There is some small adoption. We can reason about and who are the early adopter of post-quantum protocols and reason about the users of such applications/libraries.
 If #1 is found, how much of this is because of how the crypto libraries are written? Are these protocols just not ready for mainstream usage? Are they just confusing/hard to use? How are they documented differently from traditional crypto protocols? Is it just a matter of the general public needing more education? Or is the runtime of these significantly worse and therefore not worth the tradeoff?
 
+Open Questions:
+- Is this a too close to a survey?
