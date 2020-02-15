@@ -7,6 +7,12 @@ Reproducibility is the backbone of science! We found 2 previously published pape
 For all the reasons discussed in class Faulds is a good candidate for a reproducibility study. 
 Given their assumed 50% packet loss rate just isn't reasonable, we can measure how Faulds and Hershel+ does in a reasonable setting.
 
+We would:
+
+1. Reproduce the Faulds study with the parameters used in their paper
+2. See if Faulds is still useful given reasonable parameters.
+3. Do the same for Hershel+ and use that to compare against the Faulds results. 
+
 
 ### An empirical study of Namecoin and lessons for decentralized namespace design
 
