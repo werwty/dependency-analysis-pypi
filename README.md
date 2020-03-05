@@ -19,7 +19,10 @@ sudo systemctl start docker
 docker-compose up
 ```
 
-This docker-compose file currently spins up a instance of dgraph. The dgraph UI should be available at http://localhost:8000/
+The dgraph UI is available at http://localhost:8000/
+
+The jupyter notebook is available at http://127.0.0.1:8888/
+
 
 #### Python virtual environment
 

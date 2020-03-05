@@ -6,3 +6,17 @@ services:
       - "8000:8000"
       - "8080:8080"
       - "9080:9080"
+  jupyter:
+    build: .
+    ports:
+      - "8888:8888"
+    volumes:
+      - '.:/home/jupyter'
+    privileged: true
+    working_dir: /home/jupyter
+    entrypoint:
+      - jupyter
+    command:
+      - notebook
+      - --ip=0.0.0.0
+      - --allow-root
