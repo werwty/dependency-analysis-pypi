@@ -17,7 +17,6 @@ RUN dnf clean all \
 
 RUN mkdir /.local \
     && chmod -R 777 /notebooks \
-    && chmod -R 777 /.local \
-    && chown -R root:root /notebooks
+    && chmod -R 777 /.local
 
 USER root
