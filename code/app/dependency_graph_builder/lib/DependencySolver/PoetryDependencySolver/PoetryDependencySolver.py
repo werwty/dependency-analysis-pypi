@@ -31,7 +31,6 @@ class PoetryDependencySolver:
         self.poetry_factory = CustomPoetryFactory()
         self.cwd = os.getcwd()
         self.console_io = ConsoleIO()
-        self.console_io.set_verbosity(DEBUG)
 
     def setup_repo_pool(self):
         hybird_repo = HybirdRepository("pypi-simple", "https://pypi.org/simple",
