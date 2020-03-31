@@ -1,3 +1,4 @@
+import re
 from typing import (
     FrozenSet, Iterable, List, Optional, Set, Text, Tuple, Union, Any, Dict
 )
@@ -13,7 +14,7 @@ from lib.Utils import download_file
 
 class RepoProxy:
     def available_packages(self):
-        # type: () -> Iterable[str]
+        # type: () -> List[str]
         """
         :return: a iterator that enumerates the name of all available packages served by this repository
         """
@@ -107,6 +108,13 @@ class RemoteRepoProxy(RepoProxy):
         return local_path
 
 
+_canonicalize_regex = re.compile("[-_]+")
+
+
+def canonicalize_name(name):  # type: (str) -> str
+    return _canonicalize_regex.sub("-", name).lower().replace('.', '-')
+
+
 class LocalMirrorRepoProxy(RepoProxy):
     # REMOTE_PKG_FETCH_CACHE_DIR = '../pkg_cache'
     DEFAULT_LOCAL_MIRROR = '/mnt/MyPassportExt4/PyPI_Mirror/pypi/web'
@@ -115,10 +123,10 @@ class LocalMirrorRepoProxy(RepoProxy):
         # type: (str) -> None
         self.path_local_mirror = path_local_mirror
         avail_pkg_list = self.available_packages()
-        pkg_name_case_insensitive_table = dict()
+        pkg_canonical_name_to_path_name_tbl = dict()
         for pkg_name in avail_pkg_list:
-            pkg_name_case_insensitive_table[pkg_name.lower()] = pkg_name
-        self.pkg_name_case_insensitive_table = pkg_name_case_insensitive_table
+            pkg_canonical_name_to_path_name_tbl[canonicalize_name(pkg_name)] = pkg_name
+        self.pkg_name_case_insensitive_table = pkg_canonical_name_to_path_name_tbl
 
     def available_packages(self):
         pkg_list = sorted(
