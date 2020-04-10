@@ -20,14 +20,44 @@ from poetry.utils._compat import Path
 from poetry.utils.helpers import canonicalize_name
 from poetry.utils.inspector import Inspector
 from poetry.utils.patterns import wheel_file_re
-from poetry.version.markers import InvalidMarker
+from poetry.version.markers import InvalidMarker, parse_marker
 from lib.RepoProxy import LocalMirrorRepoProxy
 
 
 class HybirdRepository(LegacyRepository):
+    class PipLinkEvaluator:
+        from pip._internal.index.package_finder import LinkEvaluator
+        from pip._internal.models.link import Link
+        from pip._internal.models.target_python import TargetPython
+        from pip._vendor.packaging.utils import canonicalize_name
+
+        def __init__(self):
+            self._target_python = HybirdRepository.PipLinkEvaluator.TargetPython()
+            self._allow_yanked = False
+            self._ignore_requires_python = False
+            self._accept_pkg_format = frozenset({'binary'})
+
+        def _make_link_evaluator(self, pkg_name):
+            return HybirdRepository.PipLinkEvaluator.LinkEvaluator(
+                project_name=pkg_name,
+                canonical_name=HybirdRepository.PipLinkEvaluator.canonicalize_name(pkg_name),
+                formats=self._accept_pkg_format,
+                target_python=self._target_python,
+                allow_yanked=self._allow_yanked,
+                ignore_requires_python=self._ignore_requires_python,
+            )
+
+        def evaluate_binary_pkg(self, pkg_name, urls_list):
+            link_evaluator = self._make_link_evaluator(pkg_name)
+            ret_val = list(filter(
+                lambda url: link_evaluator.evaluate_link(HybirdRepository.PipLinkEvaluator.Link(url))[0], urls_list
+            ))
+            return ret_val
+
     def __init__(self, name, url, local_mirror_path, auth=None, disable_cache=False, cert=None, client_cert=None):
         super().__init__(name, url, auth, disable_cache, cert, client_cert)
         self.local_mirror_proxy = LocalMirrorRepoProxy(local_mirror_path)
+        self.pip_link_evaluator = HybirdRepository.PipLinkEvaluator()
 
     def _find_packages_from_local_mirror(
             self, name, constraint=None, extras=None, allow_prereleases=False
@@ -157,13 +187,111 @@ class HybirdRepository(LegacyRepository):
 
         data["files"] = files
 
-        info = self._get_info_from_urls(urls)
+        info = self._get_info_from_urls_patched(urls, name)
 
         data["summary"] = info["summary"]
         data["requires_dist"] = info["requires_dist"]
         data["requires_python"] = info["requires_python"]
 
         return data
+
+    def _get_info_from_urls_patched(
+            self, urls, name
+    ):  # type: (Dict[str, List[str]], str) -> Dict[str, Union[str, List, None]]
+        # Checking wheels first as they are more likely to hold
+        # the necessary information
+        if "bdist_wheel" in urls:
+            # Check fo a universal wheel
+            wheels = urls["bdist_wheel"]
+
+            universal_wheel = None
+            universal_python2_wheel = None
+            universal_python3_wheel = None
+            platform_specific_wheels = []
+            pip_evaluated_wheels = self.pip_link_evaluator.evaluate_binary_pkg(name, urls["bdist_wheel"])
+            for wheel in wheels:
+                link = Link(wheel)
+                m = wheel_file_re.match(link.filename)
+                if not m:
+                    continue
+
+                pyver = m.group("pyver")
+                abi = m.group("abi")
+                plat = m.group("plat")
+                if abi == "none" and plat == "any":
+                    # Universal wheel
+                    if pyver == "py2.py3":
+                        # Any Python
+                        universal_wheel = wheel
+                    elif pyver == "py2":
+                        universal_python2_wheel = wheel
+                    else:
+                        universal_python3_wheel = wheel
+                else:
+                    platform_specific_wheels.append(wheel)
+
+            if universal_wheel is not None:
+                return self._get_info_from_wheel(universal_wheel)
+
+            info = {}
+            if universal_python2_wheel and universal_python3_wheel:
+                info = self._get_info_from_wheel(universal_python2_wheel)
+
+                py3_info = self._get_info_from_wheel(universal_python3_wheel)
+                if py3_info["requires_dist"]:
+                    if not info["requires_dist"]:
+                        info["requires_dist"] = py3_info["requires_dist"]
+
+                        return info
+
+                    py2_requires_dist = set(
+                        dependency_from_pep_508(r).to_pep_508()
+                        for r in info["requires_dist"]
+                    )
+                    py3_requires_dist = set(
+                        dependency_from_pep_508(r).to_pep_508()
+                        for r in py3_info["requires_dist"]
+                    )
+                    base_requires_dist = py2_requires_dist & py3_requires_dist
+                    py2_only_requires_dist = py2_requires_dist - py3_requires_dist
+                    py3_only_requires_dist = py3_requires_dist - py2_requires_dist
+
+                    # Normalizing requires_dist
+                    requires_dist = list(base_requires_dist)
+                    for requirement in py2_only_requires_dist:
+                        dep = dependency_from_pep_508(requirement)
+                        dep.marker = dep.marker.intersect(
+                            parse_marker("python_version == '2.7'")
+                        )
+                        requires_dist.append(dep.to_pep_508())
+
+                    for requirement in py3_only_requires_dist:
+                        dep = dependency_from_pep_508(requirement)
+                        dep.marker = dep.marker.intersect(
+                            parse_marker("python_version >= '3'")
+                        )
+                        requires_dist.append(dep.to_pep_508())
+
+                    info["requires_dist"] = sorted(list(set(requires_dist)))
+
+            if info:
+                return info
+
+            # Prefer non platform specific wheels
+            if universal_python3_wheel:
+                return self._get_info_from_wheel(universal_python3_wheel)
+
+            if universal_python2_wheel:
+                return self._get_info_from_wheel(universal_python2_wheel)
+
+            if pip_evaluated_wheels:
+                return self._get_info_from_wheel(pip_evaluated_wheels[0])
+
+            if platform_specific_wheels and "sdist" not in urls:
+                # Pick the first wheel available and hope for the best
+                return self._get_info_from_wheel(platform_specific_wheels[0])
+
+        return self._get_info_from_sdist(urls["sdist"][0])
 
     # PATCHED, will check local mirror first, won't cache the information got from local mirror
     def get_release_info(self, name, version):
