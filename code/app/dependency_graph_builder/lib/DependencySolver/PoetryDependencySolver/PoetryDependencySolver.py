@@ -31,6 +31,7 @@ class PoetryDependencySolver:
         self.poetry_factory = CustomPoetryFactory()
         self.cwd = os.getcwd()
         self.console_io = ConsoleIO()
+        # self.console_io.set_verbosity(DEBUG)
 
     def setup_repo_pool(self):
         hybird_repo = HybirdRepository("pypi-simple", "https://pypi.org/simple",
@@ -121,7 +122,7 @@ def default_dep_edge_handler(dependent, required_by):
 
         msg = "{} {} {}".format(
             format_node(req_pkg.pretty_name, req_pkg.pretty_version),
-            format_edge(dep_pkg_dep.pretty_constraint),
+            format_edge("{} ({})".format(dep_pkg_dep.pretty_name, dep_pkg_dep.pretty_constraint)),
             format_node(dep_pkg.pretty_name, dep_pkg.pretty_version)
         )
     else:
