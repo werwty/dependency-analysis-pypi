@@ -8,13 +8,13 @@ from lib.RepoProxy import LocalMirrorRepoProxy
 def main():
     local_mirror_repo = LocalMirrorRepoProxy()
 
-    dep_solver = PoetryDependencySolver()
+    dep_solver = PoetryDependencySolver(verbose_output=False)
     dep_solver.setup_repo_pool()
 
     avail_pkg_list = local_mirror_repo.available_packages()
 
     def demo_dep(pkg_name, ver_constraint):
-        dep_graph, pkg_list, depth = dep_solver.solve([
+        dep_graph, pkg_list, depth, pkg_info_src = dep_solver.solve([
             (pkg_name, ver_constraint)
         ])
 

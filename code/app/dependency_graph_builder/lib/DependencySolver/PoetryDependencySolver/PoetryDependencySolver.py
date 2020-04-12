@@ -26,25 +26,29 @@ import os
 
 
 class PoetryDependencySolver:
-    def __init__(self):
+    def __init__(self, verbose_output=False):
         self.repo_pool = Pool()
         self.poetry_factory = CustomPoetryFactory()
         self.cwd = os.getcwd()
         self.console_io = ConsoleIO()
-        # self.console_io.set_verbosity(DEBUG)
+        self.hybird_repo = HybirdRepository("pypi-simple", "https://pypi.org/simple",
+                                            local_mirror_path='/mnt/MyPassportExt4/PyPI_Mirror/pypi/web')
+        if verbose_output:
+            self.console_io.set_verbosity(DEBUG)
 
     def setup_repo_pool(self):
-        hybird_repo = HybirdRepository("pypi-simple", "https://pypi.org/simple",
-                                       local_mirror_path='/mnt/MyPassportExt4/PyPI_Mirror/pypi/web')
-        self.repo_pool.add_repository(hybird_repo, True)
+        self.repo_pool.add_repository(self.hybird_repo, True)
 
         # pypi_offical_repo = PyPiRepository()
         # self.repo_pool.add_repository(pypi_offical_repo)
 
     def solve(self, requirements, solve_extra_dep=False):
-        # type: (List[Tuple[str,str]], bool) -> (Dict[str, Any], List[DependencyPackage], List[int])
+        # type: (List[Tuple[str,str]], bool) -> (Dict[str, Any], List[DependencyPackage], List[int], HybirdRepository.DepInfoSrcUrlTracker)
         poetry = self.poetry_factory.create_poetry(Path(self.cwd), do_pool_setup=False)
         poetry.set_pool(self.repo_pool)  # Rework on pool
+
+        # do NOT reset the src tracker because the poetry cache the dep resolution result
+        # self.hybird_repo.reset_info_src_tracker()
 
         for _name, _req in requirements:
             poetry.package.add_dependency(_name, _req)
@@ -96,7 +100,7 @@ class PoetryDependencySolver:
             depths.append(depth)
             final_packages.append(package)
 
-        return graph, final_packages, depths
+        return graph, final_packages, depths, self.hybird_repo.info_src_url_tracker
 
 
 def default_dep_edge_handler(dependent, required_by):
@@ -107,9 +111,6 @@ def default_dep_edge_handler(dependent, required_by):
         return "[{}]".format(text)
 
     def format_edge(_constraint):
-        # text = " {} ".format(_constraint).ljust(80, '='),
-        # final_text = "===={}>".format(text)
-        # return final_text
         text = (" %s " % _constraint).ljust(80, '='),
         final_text = "====%s>" % text
         return final_text

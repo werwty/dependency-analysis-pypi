@@ -54,10 +54,51 @@ class HybirdRepository(LegacyRepository):
             ))
             return ret_val
 
+    class DepInfoSrcUrlTracker:
+        def __init__(self, repo):
+            self.info_src_url_tracker = defaultdict(set)
+            self.repo = repo
+
+        @staticmethod
+        def build_info_src_key(name, ver):
+            # type: (str, str) -> str
+            return "%s@%s" % (canonicalize_name(name).replace(".", "-"), ver)
+
+        def record_info_src(self, pkg_name, pkg_ver, url):
+            # type: (str, str, str) -> None
+            rec_key = self.build_info_src_key(pkg_name, pkg_ver)
+            self.info_src_url_tracker[rec_key].add(url)
+
+        def query_info_src(self, pkg_name, pkg_ver):
+            # type: (str, str) -> Optional[Set[str]]
+            rec_key = self.build_info_src_key(pkg_name, pkg_ver)
+            if rec_key in self.info_src_url_tracker.keys():
+                return self.info_src_url_tracker[rec_key]
+            else:
+                return None
+
+        def query_release_data_for_url(self, name, version, url):
+            # type: (str, str, str) -> Optional[str]
+            canonical_name = canonicalize_name(name).replace(".", "-")
+            meta_json_local_file_url = "file://{}".format(os.path.join(
+                self.repo.local_mirror_proxy.path_local_mirror,
+                'json', canonical_name
+            ))
+
+            pkg_list_from_meta_json = self.repo.local_mirror_proxy.get_pkg_file_list(canonical_name)
+            for p in pkg_list_from_meta_json:
+                if p['url'] == url:
+                    return p['upload_time']
+            return None
+
     def __init__(self, name, url, local_mirror_path, auth=None, disable_cache=False, cert=None, client_cert=None):
         super().__init__(name, url, auth, disable_cache, cert, client_cert)
         self.local_mirror_proxy = LocalMirrorRepoProxy(local_mirror_path)
         self.pip_link_evaluator = HybirdRepository.PipLinkEvaluator()
+        self.info_src_url_tracker = self.DepInfoSrcUrlTracker(self)
+
+    def reset_info_src_tracker(self):
+        self.info_src_url_tracker = self.DepInfoSrcUrlTracker(self)
 
     def _find_packages_from_local_mirror(
             self, name, constraint=None, extras=None, allow_prereleases=False
@@ -85,13 +126,13 @@ class HybirdRepository(LegacyRepository):
             self.local_mirror_proxy.path_local_mirror,
             'json', canonical_name
         ))
-        file_list_from_meta_json = self.local_mirror_proxy.get_pkg_file_list(canonical_name)
+        pkg_file_list_from_meta_json = self.local_mirror_proxy.get_pkg_file_list(canonical_name)
 
-        if file_list_from_meta_json:
+        if pkg_file_list_from_meta_json:
             versions = []
 
             ver_seen = set()
-            for file_info in file_list_from_meta_json:
+            for file_info in pkg_file_list_from_meta_json:
                 try:
                     version = Version.parse(file_info['ver'])
                 except ValueError:
@@ -146,9 +187,9 @@ class HybirdRepository(LegacyRepository):
             self.local_mirror_proxy.path_local_mirror,
             'json', canonical_name
         ))
-        file_list_from_meta_json = self.local_mirror_proxy.get_pkg_file_list(canonical_name)
+        pkg_file_list_from_meta_json = self.local_mirror_proxy.get_pkg_file_list(canonical_name)
         # page = self._get("/{}/".format(canonicalize_name(name).replace(".", "-")))
-        if len(file_list_from_meta_json) == 0:
+        if len(pkg_file_list_from_meta_json) == 0:
             return None
 
         data = {
@@ -161,12 +202,12 @@ class HybirdRepository(LegacyRepository):
             "_cache_version": str(self.CACHE_VERSION),
         }
 
-        def find_links_for_version(_file_list, _version):
-            for _f_info in _file_list:
+        def find_links_for_version(_pkg_file_list, _version):
+            for _f_info in _pkg_file_list:
                 if Version.parse(_f_info['ver']) == Version.parse(version):
                     yield Link(_f_info['url'], meta_json_local_file_url, _f_info['requires_python'])
 
-        links = list(find_links_for_version(file_list_from_meta_json, version))
+        links = list(find_links_for_version(pkg_file_list_from_meta_json, version))
         if not links:
             return None
 
@@ -187,7 +228,11 @@ class HybirdRepository(LegacyRepository):
 
         data["files"] = files
 
-        info = self._get_info_from_urls_patched(urls, name)
+        info, info_src_url = self._get_info_from_urls_patched(urls, name)
+
+        # track where the dependency information comes from, might be useful in future
+        #   (e.g. to improve the accuracy by recheck the information comes from sdist)
+        self.info_src_url_tracker.record_info_src(canonical_name, version, info_src_url)
 
         data["summary"] = info["summary"]
         data["requires_dist"] = info["requires_dist"]
@@ -197,7 +242,7 @@ class HybirdRepository(LegacyRepository):
 
     def _get_info_from_urls_patched(
             self, urls, name
-    ):  # type: (Dict[str, List[str]], str) -> Dict[str, Union[str, List, None]]
+    ):  # type: (Dict[str, List[str]], str) -> (Dict[str, Union[str, List, None]], str)
         # Checking wheels first as they are more likely to hold
         # the necessary information
         if "bdist_wheel" in urls:
@@ -231,7 +276,7 @@ class HybirdRepository(LegacyRepository):
                     platform_specific_wheels.append(wheel)
 
             if universal_wheel is not None:
-                return self._get_info_from_wheel(universal_wheel)
+                return self._get_info_from_wheel(universal_wheel), universal_wheel
 
             info = {}
             if universal_python2_wheel and universal_python3_wheel:
@@ -242,7 +287,7 @@ class HybirdRepository(LegacyRepository):
                     if not info["requires_dist"]:
                         info["requires_dist"] = py3_info["requires_dist"]
 
-                        return info
+                        return info, universal_python3_wheel
 
                     py2_requires_dist = set(
                         dependency_from_pep_508(r).to_pep_508()
@@ -275,23 +320,25 @@ class HybirdRepository(LegacyRepository):
                     info["requires_dist"] = sorted(list(set(requires_dist)))
 
             if info:
-                return info
+                # return info, ("%s|%s" % (universal_python2_wheel, universal_python3_wheel))
+                # since we only concern for python 3, information for python 2 is dropped
+                return info, universal_python3_wheel
 
             # Prefer non platform specific wheels
             if universal_python3_wheel:
-                return self._get_info_from_wheel(universal_python3_wheel)
+                return self._get_info_from_wheel(universal_python3_wheel), universal_python3_wheel
 
             if universal_python2_wheel:
-                return self._get_info_from_wheel(universal_python2_wheel)
+                return self._get_info_from_wheel(universal_python2_wheel), universal_python2_wheel
 
             if pip_evaluated_wheels:
-                return self._get_info_from_wheel(pip_evaluated_wheels[0])
+                return self._get_info_from_wheel(pip_evaluated_wheels[0]), pip_evaluated_wheels[0]
 
             if platform_specific_wheels and "sdist" not in urls:
                 # Pick the first wheel available and hope for the best
-                return self._get_info_from_wheel(platform_specific_wheels[0])
+                return self._get_info_from_wheel(platform_specific_wheels[0]), platform_specific_wheels[0]
 
-        return self._get_info_from_sdist(urls["sdist"][0])
+        return self._get_info_from_sdist(urls["sdist"][0]), urls["sdist"][0]
 
     # PATCHED, will check local mirror first, won't cache the information got from local mirror
     def get_release_info(self, name, version):
