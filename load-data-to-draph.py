@@ -69,15 +69,25 @@ def query_package(client, package_name, package_version):
             number_dependents
         }
     }"""
-
     variables = {'$name': package_name, '$version': package_version}
     res = client.txn(read_only=True).query(query, variables=variables)
     packages = json.loads(res.json)
-
     # Print results.
     if packages.get("all"):
         return packages.get("all")[0]
     return []
+
+
+def count_nodes(client):
+    query = """    
+    {
+      total (func: has (_predicate_) ) {
+        count(uid)
+      }
+    } 
+    """
+    res = client.txn(read_only=True).query(query)
+    print(res)
 
 def insert_package(package_json):
     txn = client.txn()
@@ -86,17 +96,17 @@ def insert_package(package_json):
     pkg_dependencies = {}
     for package_name, package in package_json.get("dep_info", {}).items():
         version = package.get("ver")
-        
+
         # Check if this package already exists in the graph db.
         # if it does increment its number of dependents by 1
         # otherwise insert it into the graph db.
         existing_package = query_package(client, package_name, version)
         if existing_package:
-            existing_package['number_dependents'] = existing_package['number_dependents']+1
-            txn.mutate(set_obj=existing_package)   
+            existing_package['number_dependents'] = existing_package['number_dependents'] + 1
+            txn.mutate(set_obj=existing_package)
             packages_uid[(package_name, version)] = existing_package['uid']
             continue
-            
+
         pkg_to_insert = {
             'uid': '_:{}'.format(package_name),
             'dgraph.type': 'Package',
@@ -107,26 +117,28 @@ def insert_package(package_json):
             'number_dependents': 0
 
         }
-        
-        insert_data = txn.mutate(set_obj=pkg_to_insert)   
+
+        insert_data = txn.mutate(set_obj=pkg_to_insert)
         packages_uid[(package_name, version)] = insert_data.uids[package_name]
-        
+
         pkg_dependencies[insert_data.uids[package_name]] = package.get('dep')
     txn.commit()
 
-    #txn = client.txn()
+    # txn = client.txn()
 
-#     print(package_uid)
-#    print(pkg_dependencies)
+    #     print(package_uid)
+    #    print(pkg_dependencies)
 
-#     # it is important that we commit the dependencies after we insert the nodes
-#     # otherwise we can't link them via uuid
+    #     # it is important that we commit the dependencies after we insert the nodes
+    #     # otherwise we can't link them via uuid
     with open('dependencies.csv', 'a+') as f:
         for package_uuid, dependencies in pkg_dependencies.items():
             for dependency in dependencies:
                 writer = csv.writer(f)
                 writer.writerow([package_uuid, packages_uid[(dependency['dep_name'], dependency['dep_ver'])],
-                        dependency['dep_name'], dependency['dep_ver'], dependency['dep_constraint']])
+                                 dependency['dep_name'], dependency['dep_ver'], dependency['dep_constraint']])
+
+
 #     for package_uuid, dependencies in pkg_dependencies.items():
 #         for dependency in dependencies:
 #             dependency_to_insert = {
@@ -153,17 +165,19 @@ def generate_dep_graph(datadir):
 
     entries = os.listdir(datadir)
     for entry in entries:
-        with open(os.path.join(datadir, entry)) as file:
-            json_data = json.load(file)
-            logger.info("Inserting data for {}".format(json_data.get("root_pkg")))
-            try:
-                insert_package(json_data)
-            except Exception as e:
-                logger.warning("Failed to parse data for {} with exception {}".format(json_data.get("root_pkg"), e))
+        try:
+            with open(os.path.join(datadir, entry)) as file:
+                json_data = json.load(file)
+                logger.info("Inserting data for {}".format(json_data.get("root_pkg")))
+                try:
+                    insert_package(json_data)
+                except Exception as e:
+                    logger.warning("Failed to parse data for {} with exception {}".format(json_data.get("root_pkg"), e))
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to open file {} for parsing".format(entry))
 
 if __name__ == '__main__':
     generate_dep_graph()
-
 
 # In[28]:
 
