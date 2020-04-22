@@ -39,3 +39,20 @@ To activate the virtual environment run:
 ```
 poetry shell
 ```
+
+
+
+###
+Running Dgraph on server
+
+```
+docker run -d -it -p 5080:5080 -p 6080:6080 -p 8080:8080 \
+  -p 9080:9080 -p 8000:8000 -v ~/dgraph:/dgraph --name dgraph \
+  dgraph/dgraph:v20.03.0 dgraph zero
+
+# In another terminal, now run Dgraph alpha
+docker exec -d -it dgraph dgraph alpha --lru_mb 2048 --zero localhost:5080
+
+# And in another, run ratel (Dgraph UI)
+docker exec -d -it dgraph dgraph-ratel
+```
