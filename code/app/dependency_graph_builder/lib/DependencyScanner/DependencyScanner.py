@@ -133,8 +133,9 @@ def dependency_scanner(avail_pkg_list, start=0, end=-1, output_folder="."):
     dep_solver = PoetryDependencySolver(verbose_output=False)
     dep_solver.setup_repo_pool()
 
-    ANALYSIS_TIME_LIMIT_SEC = 15 * 60  # maximum 15 min allowed
-
+    # ANALYSIS_TIME_LIMIT_SEC = 15 * 60  # maximum 15 min allowed
+    ANALYSIS_TIME_LIMIT_SEC = 3 * 60  # maximum 3 min allowed
+    
     if start < 0:
         start = 0
     if end < 0 or len(avail_pkg_list) < end:
@@ -188,8 +189,8 @@ def dependency_scanner(avail_pkg_list, start=0, end=-1, output_folder="."):
         print("*" + " " * (DISP_WID - 2) + "*")
         print("* %s *" % (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")).ljust(DISP_WID - 4))
         print("*" + " " * (DISP_WID - 2) + "*")
-        print("* %s *" % ("Solving dependency %d - %d -> %d" % (start + 1, idx + 1, end)).ljust(DISP_WID - 4))
-        print("* %s *" % ("Solving dependency %d - %d -> %d" % (start + 1, idx + 1, end)).ljust(DISP_WID - 4))
+        print("* %s *" % ("Solving dependency %d - %d -> %d" % (start, idx, end - 1)).ljust(DISP_WID - 4))
+        print("* %s *" % ("Solving dependency %d - %d -> %d" % (start, idx, end - 1)).ljust(DISP_WID - 4))
         print("* %s *" % ("Package name: %s" % pkg).ljust(DISP_WID - 4))
         print("* %s *" % ("Avg processing speed: %f pkg/s" % ((idx - start) / (time_now - task_start_time))).ljust(
             DISP_WID - 4))
