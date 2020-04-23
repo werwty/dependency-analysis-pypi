@@ -140,7 +140,7 @@ class LocalMirrorRepoProxy(RepoProxy):
         return pkg_list
 
     def find_pkg_name_case_insensitive(self, pkg_name_case_insensitive):
-        return self.pkg_name_case_insensitive_table.get(pkg_name_case_insensitive, None)
+        return self.pkg_name_case_insensitive_table.get(pkg_name_case_insensitive.strip(), None)
 
     def get_pkg_file_list(self, pkg_name):
         pkg_name_case_sensitive = self.find_pkg_name_case_insensitive(pkg_name)
