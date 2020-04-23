@@ -89,6 +89,28 @@ def count_nodes(client):
     res = client.txn(read_only=True).query(query)
     print(res)
 
+def get_top_100_packages(client):
+    query = """{
+      Package as me(func: has(name)) @filter(ge(number_dependents, 700)) {
+        name
+        number_dependents
+        version
+        src
+      }
+
+      most_deps(func: UID(Package), orderdesc: number_dependents, first: 100) {
+        name
+        number_dependents
+        version
+        src
+      }
+
+    }"""
+
+    res = client.txn(read_only=True).query(query)
+    packages = json.loads(res.json)
+    print(json.dumps(packages['most_deps']))
+
 def insert_package(package_json):
     txn = client.txn()
 
