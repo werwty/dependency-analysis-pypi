@@ -1,0 +1,6 @@
+start_worker_n.sh:
+  script for starting dependency resolver with partitioned task
+idx_calculator_for_fail_recover.py:
+  in case the worker get interrupted (power outage, program failure, etc.), this script is used to calculate what is the place to restart the resolver
+merge_result_from_different_worker.py
+  once the analysis is finished, this script is used to merge the result from all workers
