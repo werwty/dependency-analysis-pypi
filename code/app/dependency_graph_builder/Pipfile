@@ -9,6 +9,7 @@ verify_ssl = true
 pkginfo = "*"
 pypi-simple = "*"
 poetry = "*"
+progress = "*"
 
 [requires]
 python_version = "3.8"

@@ -3,15 +3,16 @@ import re
 import sys
 from collections import defaultdict
 from functools import partial
+from pprint import pformat
 
 regex = r"^\[(\S+?)\]: (.*?)\n"
 
 regex_dependency_has_conflict_requires = r"\s*Because \S+? \S+\sdepends on "
 regex_no_available_version_match = r"\s*Because no versions of "
 
-known_reason_list = [
+known_causes = [
     (
-        "Poetry fail due to maximum recursion depth exceeded",
+        "Maximum poetry recursion depth exceeded",
         lambda m: m.startswith("maximum recursion depth exceeded")
     ),
 
@@ -21,27 +22,27 @@ known_reason_list = [
     ),
 
     (
-        "Invalid Requirement expression",
+        "Invalid Requirement: failed to parse requirement",
         lambda m: m.startswith("Invalid requirement, parse error at")
     ),
 
     (
-        "Invalid version constraint",
+        "Invalid Requirement: Could not parse version constraint",
         lambda m: m.startswith("Could not parse version constraint:")
     ),
 
     (
-        "No available version can satisfy the requirement",
+        "Requirement contradiction",
         lambda m: re.match(regex_no_available_version_match, m)
     ),
 
     (
-        "Requirement conflict: caused by root",
+        "No suitable package release was found: Root",
         lambda m: m.startswith("Because dep-solver-root-c6c3d607")
     ),
 
     (
-        "Requirement conflict: caused by dependency",
+        "No suitable package release was found: Dependency",
         lambda m: re.match(regex_dependency_has_conflict_requires, m)
     ),
 
@@ -56,7 +57,7 @@ known_reason_list = [
     ),
 
     (
-        "Poetry internal bug",
+        "Post-process verification fail",
         lambda m: m.startswith("Post-process verification fail: only one package is suppose to have depth 0")
     ),
 
@@ -135,7 +136,7 @@ known_reason_list = [
 ]
 
 
-def error_log_parser(error_log):
+def error_log_reader(error_log):
     test_str = error_log
     matches = re.finditer(regex, test_str, re.MULTILINE)
 
@@ -145,8 +146,8 @@ def error_log_parser(error_log):
 
 def main():
     int()
-    reason_count = defaultdict(partial(int, 0))
-    problematic_pkg_set = defaultdict(list)
+    cause_count_bin = defaultdict(partial(int, 0))
+    failed_pkg_set = defaultdict(list)
     seen = set()
 
     for worker_id in range(1, 9):
@@ -155,30 +156,46 @@ def main():
         with open(sys.argv[1] + "/worker{}/log/fail.txt".format(worker_id),
                   'r') as flog_fp:
             error_log = flog_fp.read()
-        for error_pkg, error_msg_first_line in error_log_parser(error_log):
-            reason_unknown = True
-            if error_pkg in seen:
-                print("Already seen '%s'" % error_pkg)
-            seen.add(error_pkg)
+        for failed_pkg, recorded_exception in error_log_reader(error_log):
+            cause_unknown = True
+            if failed_pkg in seen:
+                print("Already seen '%s'" % failed_pkg)
+            seen.add(failed_pkg)
 
-            for reason_id, reason_desc in enumerate(known_reason_list):
-                if reason_desc[1](error_msg_first_line):
-                    reason_count[reason_id] += 1
-                    problematic_pkg_set[reason_id].append(error_pkg)
-                    reason_unknown = False
+            for cause_id, cause_desc in enumerate(known_causes):
+                if cause_desc[1](recorded_exception):
+                    cause_count_bin[cause_id] += 1
+                    failed_pkg_set[cause_id].append(failed_pkg)
+                    cause_unknown = False
                     break
 
-            if reason_unknown:
-                print("Pkg: {} - {} ".format(error_pkg, error_msg_first_line))
+            if cause_unknown:
+                print("Pkg: {} - {} ".format(failed_pkg, recorded_exception))
 
-    reason_result = sorted(
-        reason_count.items(), key=lambda a: a[1], reverse=True
+    ranked_causes = sorted(
+        cause_count_bin.items(), key=lambda a: a[1], reverse=True
     )
 
-    for reason_id, reason_freq in reason_result:
-        print("%10d: %s" % (
-            reason_freq, known_reason_list[reason_id][0]
+    rerun_package_set = []
+    for rank, cause in enumerate(ranked_causes, start=1):
+        frequency = cause[1]
+        cause_id = cause[0]
+        print("No %2d. %10d: %s" % (
+            rank, frequency, known_causes[cause_id][0]
         ))
+        with open("output/fail_pkgs/rank{}.txt".format(rank), "w") as outfp:
+            outfp.write("No %d. %10d: %s\n========\n" % (
+                rank, frequency, known_causes[cause_id][0]
+            ))
+            outfp.write(pformat(failed_pkg_set[cause_id]))
+
+        if cause_id != 1:
+            rerun_package_set.extend(failed_pkg_set[cause_id])
+
+    with open("output/fail_pkgs/rerun_list.txt", "w") as outfp:
+        rerun_package_set = reversed(rerun_package_set)
+        for pkg_name in rerun_package_set:
+            outfp.write("%s\n" % pkg_name)
 
 
 if __name__ == '__main__':
